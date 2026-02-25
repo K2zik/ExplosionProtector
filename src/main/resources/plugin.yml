@@ -4,6 +4,7 @@ main: org.SlidrusForeal.explosionProtector.ExplosionProtector
 api-version: '1.21'
 depend:
   - CoreProtect
+folia-supported: true
 
 commands:
   ep:

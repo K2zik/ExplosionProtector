@@ -14,14 +14,20 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.TNTPrimed;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.entity.EntityChangeBlockEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.ExplosionPrimeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.hanging.HangingBreakEvent;
+import org.bukkit.entity.Enderman;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.ChatColor;
@@ -109,11 +115,19 @@ public class ExplosionProtector extends JavaPlugin implements Listener, TabCompl
         return (plugin instanceof CoreProtect) ? ((CoreProtect) plugin).getAPI() : null;
     }
 
+    /** Check if entity is an item frame or a painting that must never break. */
+    private boolean isProtectedHanging(Entity entity) {
+        EntityType type = entity.getType();
+        return type == EntityType.ITEM_FRAME ||
+               type == EntityType.GLOW_ITEM_FRAME ||
+               type == EntityType.PAINTING;
+    }
+
     /**
      * Handle entity-based explosions:
      * - For TNT: allow chain reactions to break TNT and natural blocks,
-     *   but protect all other player-placed blocks.
-     * - For other entities: protect all player-placed blocks.
+     *   but protect all other player-placed blocks and frames.
+     * - For other entities: protect all player-placed blocks and frames.
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent event) {
@@ -148,6 +162,14 @@ public class ExplosionProtector extends JavaPlugin implements Listener, TabCompl
         // no special handling
     }
 
+    /** Prevent Endermen from moving blocks (pickup/place) */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityChangeBlock(EntityChangeBlockEvent event) {
+        if (event.getEntity() instanceof Enderman) {
+            event.setCancelled(true);
+        }
+    }
+
     /** Prevent TNT projectile explosions */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onProjectileHit(ProjectileHitEvent event) {
@@ -155,6 +177,22 @@ public class ExplosionProtector extends JavaPlugin implements Listener, TabCompl
             ((TNTPrimed) event.getEntity()).remove();
             getLogger().info(messages.getString("tnt_projectile_prevented",
                     "[ExplosionProtector] TNT projectile explosion prevented."));
+        }
+    }
+
+    /** Keep paintings and item frames from being removed by any break cause. */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onHangingBreak(HangingBreakEvent event) {
+        if (isProtectedHanging(event.getEntity())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Block direct damage to paintings and item frames (players, projectiles, explosions, etc.). */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onEntityDamage(EntityDamageEvent event) {
+        if (isProtectedHanging(event.getEntity())) {
+            event.setCancelled(true);
         }
     }
 
