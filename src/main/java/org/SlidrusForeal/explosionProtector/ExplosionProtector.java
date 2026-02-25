@@ -115,7 +115,7 @@ public class ExplosionProtector extends JavaPlugin implements Listener, TabCompl
         return (plugin instanceof CoreProtect) ? ((CoreProtect) plugin).getAPI() : null;
     }
 
-    /** Check if entity is an item frame or a painting that must never break. */
+    /** Check if entity is an item frame or painting. */
     private boolean isProtectedHanging(Entity entity) {
         EntityType type = entity.getType();
         return type == EntityType.ITEM_FRAME ||
@@ -126,8 +126,8 @@ public class ExplosionProtector extends JavaPlugin implements Listener, TabCompl
     /**
      * Handle entity-based explosions:
      * - For TNT: allow chain reactions to break TNT and natural blocks,
-     *   but protect all other player-placed blocks and frames.
-     * - For other entities: protect all player-placed blocks and frames.
+     *   but protect all other player-placed blocks.
+     * - For other entities: protect all player-placed blocks.
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent event) {
@@ -180,18 +180,22 @@ public class ExplosionProtector extends JavaPlugin implements Listener, TabCompl
         }
     }
 
-    /** Keep paintings and item frames from being removed by any break cause. */
+    /** Protect paintings and frames from explosion-only break causes. */
     @EventHandler(priority = EventPriority.LOWEST)
     public void onHangingBreak(HangingBreakEvent event) {
-        if (isProtectedHanging(event.getEntity())) {
+        if (isProtectedHanging(event.getEntity()) &&
+                event.getCause() == HangingBreakEvent.RemoveCause.EXPLOSION) {
             event.setCancelled(true);
         }
     }
 
-    /** Block direct damage to paintings and item frames (players, projectiles, explosions, etc.). */
+    /** Cancel explosion-only damage on paintings and item frames. */
     @EventHandler(priority = EventPriority.LOWEST)
     public void onEntityDamage(EntityDamageEvent event) {
-        if (isProtectedHanging(event.getEntity())) {
+        EntityDamageEvent.DamageCause cause = event.getCause();
+        if (isProtectedHanging(event.getEntity()) &&
+                (cause == EntityDamageEvent.DamageCause.BLOCK_EXPLOSION ||
+                        cause == EntityDamageEvent.DamageCause.ENTITY_EXPLOSION)) {
             event.setCancelled(true);
         }
     }
