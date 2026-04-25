@@ -1,2 +1,58 @@
 
 language: en   # zh, es, hi, ru, ar, fr, de, ja, pt
+
+# Master switch for explosion protection logic.
+plugin-active: true
+
+# Cache config for CoreProtect fallback lookups.
+cache-expire-seconds: 30
+cache-max-size: 10000
+cache-negative-expire-seconds: 10
+cache-negative-max-size: 2500
+
+# Maximum CoreProtect history depth used during queued lookup checks.
+lookup-history-limit: 10
+coreprotect-async-batch-size: 64
+coreprotect-async-queue-max-size: 10000
+coreprotect-async-worker-threads: 2
+coreprotect-lookup-timeout-ms: 2000
+coreprotect-resolved-apply-batch-size: 512
+coreprotect-circuit-failure-threshold: 8
+coreprotect-circuit-open-ms: 45000
+coreprotect-health-min-batch-size: 8
+coreprotect-health-max-drain-interval-ticks: 4
+coreprotect-health-recovery-successes: 20
+# Legacy key (still supported for backward compatibility):
+# coreprotect-sync-lookup-timeout-ms: 2000
+
+# Behavior when CoreProtect lookup is unavailable/failed.
+protect-first-unknown: true
+require-coreprotect: true
+
+# Local tracker for player-placed blocks.
+enable-local-tracker: true
+persist-player-placed-blocks: true
+protect-player-placed-blocks: true
+max-tracked-blocks: 500000
+cleanup-on-chunk-unload: true
+cleanup-unloaded-worlds-on-start: true
+
+# Periodic persistence to avoid losing tracked data on crash.
+autosave-enabled: true
+autosave-interval-seconds: 300
+
+# Explosion behavior toggles.
+tnt-chain-breaks-only-tnt: true
+protect-hanging-from-explosions: true
+protect-item-frames: true
+protect-paintings: true
+block-enderman-grief: true
+
+# World filters (case-insensitive). Keep both empty to apply everywhere.
+enabled-worlds: []
+disabled-worlds: []
+
+# Internal debug logs (cache-hit/cache-miss, timings, protected counts).
+debug: false
+debug-cache-log-cooldown-ms: 2000
+out-of-range-pack-warn-cooldown-ms: 30000

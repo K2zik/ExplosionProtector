@@ -1,14 +1,27 @@
 name: ExplosionProtector
-version: '2.0'
+version: '${version}'
 main: org.SlidrusForeal.explosionProtector.ExplosionProtector
 api-version: '1.21'
-depend:
+softdepend:
   - CoreProtect
+libraries:
+  - org.xerial:sqlite-jdbc:3.49.1.0
 folia-supported: true
 
 commands:
   ep:
-    description: ExplosionProtector commands (status, info, language)
-    usage: /ep <status|info|language>
+    description: ExplosionProtector commands (status, info, language, reload, toggle, save, cacheclear)
+    usage: /ep <status|info|language|reload|toggle|save|cacheclear>
     aliases:
       - explosionprot
+
+permissions:
+  explosionprotector.info:
+    description: Allows viewing plugin status/info.
+    default: op
+  explosionprotector.reload:
+    description: Allows reloading ExplosionProtector config.
+    default: op
+  explosionprotector.toggle:
+    description: Allows toggling explosion protection runtime state.
+    default: op
