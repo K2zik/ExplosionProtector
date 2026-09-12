@@ -1,12 +1,13 @@
 name: ExplosionProtector
 version: '${version}'
 main: org.SlidrusForeal.explosionProtector.ExplosionProtector
-api-version: '1.21'
+# Lowest supported line — newer Paper/Folia (1.20–26.x) still load this single JAR.
+api-version: '${apiVersion}'
 softdepend:
   - CoreProtect
 libraries:
   - org.xerial:sqlite-jdbc:3.49.1.0
-folia-supported: true
+folia-supported: ${foliaSupported}
 
 commands:
   ep:

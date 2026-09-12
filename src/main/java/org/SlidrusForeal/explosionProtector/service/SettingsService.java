@@ -1,18 +1,23 @@
 package org.SlidrusForeal.explosionProtector.service;
 
 import org.bukkit.ChatColor;
+import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
 public class SettingsService {
+    public static final List<String> SUPPORTED_LANGUAGES =
+            List.of("en", "ru", "es", "zh", "hi", "ar", "fr", "de", "ja", "pt");
+
     private final JavaPlugin plugin;
     private FileConfiguration messages;
 
@@ -21,8 +26,7 @@ public class SettingsService {
     }
 
     public void ensureLanguageResources() {
-        List<String> langs = List.of("en", "ru", "es", "zh", "hi", "ar", "fr", "de", "ja", "pt");
-        for (String lang : langs) {
+        for (String lang : SUPPORTED_LANGUAGES) {
             String resource = lang.equals("en") ? "messages.yml" : "messages_" + lang + ".yml";
             File out = new File(plugin.getDataFolder(), resource);
             if (!out.exists()) {
@@ -54,7 +58,7 @@ public class SettingsService {
                 Math.max(1, cfg.getInt("coreprotect-health-min-batch-size", 8)),
                 Math.max(1, cfg.getInt("coreprotect-health-max-drain-interval-ticks", 4)),
                 Math.max(1, cfg.getInt("coreprotect-health-recovery-successes", 20)),
-                cfg.getBoolean("protect-first-unknown", true),
+                cfg.getBoolean("protect-first-unknown", false),
                 cfg.getBoolean("protect-player-placed-blocks", true),
                 cfg.getBoolean("protect-hanging-from-explosions", true),
                 cfg.getBoolean("protect-item-frames", true),
@@ -68,10 +72,11 @@ public class SettingsService {
                 cfg.getBoolean("autosave-enabled", true),
                 Math.max(30, cfg.getInt("autosave-interval-seconds", 300)),
                 Math.max(1000, cfg.getInt("max-tracked-blocks", 500000)),
-                cfg.getBoolean("cleanup-on-chunk-unload", true),
+                cfg.getBoolean("cleanup-on-chunk-unload", false),
                 cfg.getBoolean("cleanup-unloaded-worlds-on-start", true),
                 normalizeWorlds(cfg.getStringList("enabled-worlds")),
                 normalizeWorlds(cfg.getStringList("disabled-worlds")),
+                parseMaterials(cfg.getStringList("always-explode-blocks")),
                 cfg.getBoolean("debug", false),
                 Math.max(100L, cfg.getLong("debug-cache-log-cooldown-ms", 2000L)),
                 Math.max(1000L, cfg.getLong("out-of-range-pack-warn-cooldown-ms", 30000L))
@@ -122,6 +127,14 @@ public class SettingsService {
         return !settings.disabledWorlds().contains(world);
     }
 
+    public String normalizeLanguageCode(String languageCode) {
+        if (languageCode == null || languageCode.isBlank()) {
+            return null;
+        }
+        String normalized = languageCode.trim().toLowerCase(Locale.ROOT);
+        return SUPPORTED_LANGUAGES.contains(normalized) ? normalized : null;
+    }
+
     public String normalizeWorldName(String worldName) {
         if (worldName == null) {
             return null;
@@ -142,5 +155,28 @@ public class SettingsService {
             normalized.add(name);
         }
         return normalized;
+    }
+
+    private Set<Material> parseMaterials(List<String> names) {
+        if (names == null || names.isEmpty()) {
+            return Collections.emptySet();
+        }
+        Set<Material> materials = EnumSet.noneOf(Material.class);
+        for (String raw : names) {
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            String key = raw.trim().toUpperCase(Locale.ROOT).replace(' ', '_');
+            if (key.startsWith("MINECRAFT:")) {
+                key = key.substring("MINECRAFT:".length());
+            }
+            Material material = Material.matchMaterial(key);
+            if (material == null || !material.isBlock()) {
+                plugin.getLogger().warning("[ExplosionProtector] Unknown/non-block material in always-explode-blocks: " + raw);
+                continue;
+            }
+            materials.add(material);
+        }
+        return materials.isEmpty() ? Collections.emptySet() : materials;
     }
 }

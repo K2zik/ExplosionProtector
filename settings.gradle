@@ -1,1 +1,17 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+        maven {
+            name = "papermc"
+            url = "https://repo.papermc.io/repository/maven-public/"
+        }
+    }
+}
+
+plugins {
+    // Downloads JDK 17/25 toolchains required for multi-version compilation.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
 rootProject.name = 'ExplosionProtector'

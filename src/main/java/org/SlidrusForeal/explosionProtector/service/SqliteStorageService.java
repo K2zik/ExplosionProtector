@@ -60,6 +60,42 @@ public class SqliteStorageService {
         }
     }
 
+    public List<Long> loadChunk(String world, int chunkX, int chunkZ) throws SQLException {
+        synchronized (dbLock) {
+            ensureOpen();
+            long chunkKey = PackedBlockUtil.packChunk(chunkX, chunkZ);
+            List<Long> packedBlocks = new ArrayList<>();
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "SELECT packed FROM tracked_blocks WHERE world = ? AND chunk_key = ?")) {
+                ps.setString(1, world);
+                ps.setLong(2, chunkKey);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        packedBlocks.add(rs.getLong(1));
+                    }
+                }
+            }
+            return packedBlocks;
+        }
+    }
+
+    public List<Long> loadWorld(String world) throws SQLException {
+        synchronized (dbLock) {
+            ensureOpen();
+            List<Long> packedBlocks = new ArrayList<>();
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "SELECT packed FROM tracked_blocks WHERE world = ?")) {
+                ps.setString(1, world);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        packedBlocks.add(rs.getLong(1));
+                    }
+                }
+            }
+            return packedBlocks;
+        }
+    }
+
     public void saveSnapshot(Map<String, List<Long>> snapshot) throws SQLException {
         synchronized (dbLock) {
             ensureOpen();

@@ -3,7 +3,6 @@ package org.SlidrusForeal.explosionProtector.service;
 import net.coreprotect.CoreProtectAPI;
 import net.coreprotect.CoreProtectAPI.ParseResult;
 import org.SlidrusForeal.explosionProtector.model.BlockKey;
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
@@ -140,12 +139,13 @@ public class CoreProtectLookupQueueService {
         stop();
         resetHealthState();
         ensureLookupExecutor();
-        asyncTaskId = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::drainQueue, 1L, 1L).getTaskId();
+        asyncTaskId = org.SlidrusForeal.explosionProtector.util.SchedulerUtil.runAsyncTimer(
+                plugin, this::drainQueue, 1L, 1L);
     }
 
     public void stop() {
         if (asyncTaskId != -1) {
-            Bukkit.getScheduler().cancelTask(asyncTaskId);
+            org.SlidrusForeal.explosionProtector.util.SchedulerUtil.cancel(plugin, asyncTaskId);
             asyncTaskId = -1;
         }
         queue.clear();

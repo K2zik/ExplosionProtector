@@ -87,10 +87,12 @@ public class ExplosionProtectorCommand implements CommandExecutor, TabCompleter 
                 }
                 if (args.length < 2) {
                     sender.sendMessage(ChatColor.RED + "Usage: /ep language <code>");
+                } else if (!facade.setLanguage(args[1])) {
+                    sender.sendMessage(ChatColor.RED + facade.msg("invalid_language",
+                            "Unsupported language. Valid: en, ru, es, zh, hi, ar, fr, de, ja, pt"));
                 } else {
-                    String lang = args[1];
-                    facade.setLanguage(lang);
-                    sender.sendMessage(ChatColor.GREEN + "Language set to '" + lang + "'.");
+                    sender.sendMessage(ChatColor.GREEN + "Language set to '"
+                            + args[1].trim().toLowerCase(Locale.ROOT) + "'.");
                 }
                 break;
 
@@ -148,17 +150,27 @@ public class ExplosionProtectorCommand implements CommandExecutor, TabCompleter 
         if (!cmd.getName().equalsIgnoreCase("ep")) {
             return null;
         }
-        if (args.length != 1) {
-            return Collections.emptyList();
-        }
-        List<String> completions = new ArrayList<>();
-        for (String sub : List.of("status", "info", "language", "reload", "toggle", "save", "cacheclear")) {
-            if (sub.startsWith(args[0].toLowerCase(Locale.ROOT))) {
-                completions.add(sub);
+        if (args.length == 1) {
+            List<String> completions = new ArrayList<>();
+            for (String sub : List.of("status", "info", "language", "reload", "toggle", "save", "cacheclear")) {
+                if (sub.startsWith(args[0].toLowerCase(Locale.ROOT))) {
+                    completions.add(sub);
+                }
             }
+            Collections.sort(completions);
+            return completions;
         }
-        Collections.sort(completions);
-        return completions;
+        if (args.length == 2 && args[0].equalsIgnoreCase("language")) {
+            List<String> completions = new ArrayList<>();
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            for (String lang : SettingsService.SUPPORTED_LANGUAGES) {
+                if (lang.startsWith(prefix)) {
+                    completions.add(lang);
+                }
+            }
+            return completions;
+        }
+        return Collections.emptyList();
     }
 
     public interface CommandFacade {
@@ -166,7 +178,7 @@ public class ExplosionProtectorCommand implements CommandExecutor, TabCompleter 
 
         StatusView status();
 
-        void setLanguage(String languageCode);
+        boolean setLanguage(String languageCode);
 
         void reload();
 

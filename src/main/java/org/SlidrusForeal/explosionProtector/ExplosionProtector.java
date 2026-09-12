@@ -13,7 +13,6 @@ import org.SlidrusForeal.explosionProtector.service.SettingsService;
 import org.SlidrusForeal.explosionProtector.service.SqliteStorageService;
 import org.SlidrusForeal.explosionProtector.service.TrackerService;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.Tag;
 import org.bukkit.block.Block;
@@ -35,10 +34,13 @@ import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.hanging.HangingBreakEvent;
+import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
+import org.bukkit.event.world.WorldLoadEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.SlidrusForeal.explosionProtector.util.SchedulerUtil;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -279,6 +281,40 @@ public class ExplosionProtector extends JavaPlugin
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
+    public void onChunkLoad(ChunkLoadEvent event) {
+        if (!settings.enableLocalTracker() || !settings.cleanupOnChunkUnload() || !settings.persistPlayerPlacedBlocks()) {
+            return;
+        }
+        if (!storageAvailable || !isWorldEnabled(event.getWorld().getName())) {
+            return;
+        }
+
+        String world = event.getWorld().getName();
+        int chunkX = event.getChunk().getX();
+        int chunkZ = event.getChunk().getZ();
+        SchedulerUtil.runAsync(this, () -> {
+            try {
+                List<Long> packed = storageService.loadChunk(world, chunkX, chunkZ);
+                if (packed.isEmpty()) {
+                    return;
+                }
+                SchedulerUtil.runGlobal(this, () -> {
+                    List<Long> filtered = filterOutPendingDeletes(world, packed);
+                    int loaded = trackerService.loadChunk(world, filtered);
+                    if (loaded > 0) {
+                        debug("chunk load restore world=" + world
+                                + " chunk=" + chunkX + "," + chunkZ
+                                + " loaded=" + loaded);
+                    }
+                });
+            } catch (SQLException e) {
+                getLogger().warning("[ExplosionProtector] Failed to load tracked chunk "
+                        + world + ":" + chunkX + "," + chunkZ + ": " + e.getMessage());
+            }
+        });
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
     public void onChunkUnload(ChunkUnloadEvent event) {
         if (!settings.enableLocalTracker() || !settings.cleanupOnChunkUnload()) {
             return;
@@ -287,12 +323,43 @@ public class ExplosionProtector extends JavaPlugin
             return;
         }
 
-        int removed = removeTrackedBlocksForChunk(event.getWorld().getName(), event.getChunk().getX(), event.getChunk().getZ());
+        // Memory-only eviction: keep SQLite rows so protection can be restored on chunk load.
+        int removed = removeTrackedBlocksForChunkMemoryOnly(
+                event.getWorld().getName(), event.getChunk().getX(), event.getChunk().getZ());
         if (removed > 0) {
-            debug("chunk unload cleanup world=" + event.getWorld().getName()
+            debug("chunk unload memory cleanup world=" + event.getWorld().getName()
                     + " chunk=" + event.getChunk().getX() + "," + event.getChunk().getZ()
                     + " removed=" + removed);
         }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onWorldLoad(WorldLoadEvent event) {
+        if (!settings.enableLocalTracker() || !settings.persistPlayerPlacedBlocks() || !storageAvailable) {
+            return;
+        }
+        if (!isWorldEnabled(event.getWorld().getName())) {
+            return;
+        }
+        String world = event.getWorld().getName();
+        SchedulerUtil.runAsync(this, () -> {
+            try {
+                List<Long> packed = storageService.loadWorld(world);
+                if (packed.isEmpty()) {
+                    return;
+                }
+                SchedulerUtil.runGlobal(this, () -> {
+                    List<Long> filtered = filterOutPendingDeletes(world, packed);
+                    int loaded = trackerService.loadChunk(world, filtered);
+                    if (loaded > 0) {
+                        debug("world load restore world=" + world + " loaded=" + loaded);
+                    }
+                });
+            } catch (SQLException e) {
+                getLogger().warning("[ExplosionProtector] Failed to load tracked world "
+                        + world + ": " + e.getMessage());
+            }
+        });
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -300,13 +367,14 @@ public class ExplosionProtector extends JavaPlugin
         if (!settings.enableLocalTracker()) {
             return;
         }
-        int removed = removeTrackedBlocksForWorld(event.getWorld().getName());
+        // Keep SQLite rows when persistence is enabled; only free RAM.
+        int removed = removeTrackedBlocksForWorldMemoryOnly(event.getWorld().getName());
         if (removed > 0) {
-            debug("world unload cleanup world=" + event.getWorld().getName() + " removed=" + removed);
+            debug("world unload memory cleanup world=" + event.getWorld().getName() + " removed=" + removed);
         }
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onHangingBreak(HangingBreakEvent event) {
         if (pluginActive
                 && settings.protectHangingFromExplosions()
@@ -317,17 +385,24 @@ public class ExplosionProtector extends JavaPlugin
         }
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onEntityDamage(EntityDamageEvent event) {
-        EntityDamageEvent.DamageCause cause = event.getCause();
-        if (pluginActive
-                && settings.protectHangingFromExplosions()
-                && isWorldEnabled(event.getEntity().getWorld().getName())
-                && isProtectedHanging(event.getEntity())
-                && (cause == EntityDamageEvent.DamageCause.BLOCK_EXPLOSION
-                || cause == EntityDamageEvent.DamageCause.ENTITY_EXPLOSION)) {
-            event.setCancelled(true);
+        if (!pluginActive || !settings.protectHangingFromExplosions()) {
+            return;
         }
+        EntityDamageEvent.DamageCause cause = event.getCause();
+        if (cause != EntityDamageEvent.DamageCause.BLOCK_EXPLOSION
+                && cause != EntityDamageEvent.DamageCause.ENTITY_EXPLOSION) {
+            return;
+        }
+        Entity entity = event.getEntity();
+        if (!isProtectedHanging(entity)) {
+            return;
+        }
+        if (!isWorldEnabled(entity.getWorld().getName())) {
+            return;
+        }
+        event.setCancelled(true);
     }
 
     private boolean isPlayerPlaced(Block block) {
@@ -360,15 +435,13 @@ public class ExplosionProtector extends JavaPlugin
 
         debugRateLimited("cache-miss", settings.debugCacheLogCooldownMs(), () -> "cache-miss " + key);
 
-        boolean fallback = settings.protectFirstUnknown();
-        placementCacheService.put(key, fallback);
-        if (fallback && settings.enableLocalTracker()) {
-            trackPlacedBlock(world, packed);
-        }
+        // Do not cache the speculative fallback: only BlockPlace / CoreProtect results are authoritative.
+        // Caching "protect" here made natural terrain immortal until the async lookup finished (or forever
+        // if CoreProtect was slow/unavailable).
         if (coreProtectQueueService != null && coreProtectQueueService.isAvailable()) {
             coreProtectQueueService.enqueue(key, block.getX(), block.getY(), block.getZ());
         }
-        return fallback;
+        return settings.protectFirstUnknown();
     }
 
     /**
@@ -384,6 +457,14 @@ public class ExplosionProtector extends JavaPlugin
         int index = 0;
         for (Block block : blocks) {
             if (preserveTntInChainMode && block.getType() == Material.TNT) {
+                if (keep != null) {
+                    keep.add(block);
+                }
+                index++;
+                continue;
+            }
+            // Whitelisted materials always explode, even if player-placed.
+            if (settings.isAlwaysExplode(block.getType())) {
                 if (keep != null) {
                     keep.add(block);
                 }
@@ -462,43 +543,50 @@ public class ExplosionProtector extends JavaPlugin
         return removed;
     }
 
-    private int removeTrackedBlocksForChunk(String world, int chunkX, int chunkZ) {
-        return trackerService.removeChunk(world, chunkX, chunkZ, key -> {
-            placementCacheService.invalidate(key);
-            markUntrackedDirty(key.world(), key.packed());
-        });
+    private List<Long> filterOutPendingDeletes(String world, List<Long> packedBlocks) {
+        synchronized (dirtyLock) {
+            Set<Long> pendingDeletes = dirtyDeletes.get(world);
+            if (pendingDeletes == null || pendingDeletes.isEmpty()) {
+                return packedBlocks;
+            }
+            List<Long> filtered = new ArrayList<>(packedBlocks.size());
+            for (Long packed : packedBlocks) {
+                if (packed != null && !pendingDeletes.contains(packed)) {
+                    filtered.add(packed);
+                }
+            }
+            return filtered;
+        }
     }
 
-    private int removeTrackedBlocksForWorld(String world) {
-        return trackerService.removeWorld(world, key -> {
-            placementCacheService.invalidate(key);
-            markUntrackedDirty(key.world(), key.packed());
-        });
+    private int removeTrackedBlocksForChunkMemoryOnly(String world, int chunkX, int chunkZ) {
+        return trackerService.removeChunk(world, chunkX, chunkZ, placementCacheService::invalidate);
+    }
+
+    private int removeTrackedBlocksForWorldMemoryOnly(String world) {
+        return trackerService.removeWorld(world, placementCacheService::invalidate);
     }
 
     private void cleanupEntriesFromUnloadedWorlds() {
         Set<String> loadedWorlds = new HashSet<>();
         Bukkit.getWorlds().forEach(world -> loadedWorlds.add(world.getName()));
 
-        int removed = trackerService.cleanupUnloadedWorlds(loadedWorlds, key -> {
-            placementCacheService.invalidate(key);
-            markUntrackedDirty(key.world(), key.packed());
-        });
+        // Never delete persisted rows for worlds that are simply not loaded yet.
+        int removed = trackerService.cleanupUnloadedWorlds(loadedWorlds, placementCacheService::invalidate);
         if (removed > 0) {
-            debug("removed " + removed + " tracker entries from unloaded worlds");
+            debug("removed " + removed + " in-memory tracker entries from unloaded worlds");
         }
     }
 
     private void startResolvedApplyTask() {
         stopResolvedApplyTask();
-        resolvedApplyTaskId = Bukkit.getScheduler().runTaskTimer(
-                this, () -> applyQueuedLookupResolutions(settings.coreProtectResolvedApplyBatchSize()), 1L, 1L)
-                .getTaskId();
+        resolvedApplyTaskId = SchedulerUtil.runGlobalTimer(
+                this, () -> applyQueuedLookupResolutions(settings.coreProtectResolvedApplyBatchSize()), 1L, 1L);
     }
 
     private void stopResolvedApplyTask() {
         if (resolvedApplyTaskId != -1) {
-            Bukkit.getScheduler().cancelTask(resolvedApplyTaskId);
+            SchedulerUtil.cancel(this, resolvedApplyTaskId);
             resolvedApplyTaskId = -1;
         }
     }
@@ -638,14 +726,14 @@ public class ExplosionProtector extends JavaPlugin
         }
 
         long periodTicks = settings.autosaveIntervalSeconds() * 20L;
-        autosaveTaskId = Bukkit.getScheduler().runTaskTimerAsynchronously(
-                this, this::saveTrackedBlocksIfNeeded, periodTicks, periodTicks).getTaskId();
+        autosaveTaskId = SchedulerUtil.runAsyncTimer(
+                this, this::saveTrackedBlocksIfNeeded, periodTicks, periodTicks);
         debug("autosave task started, every " + settings.autosaveIntervalSeconds() + "s");
     }
 
     private void stopAutosaveTask() {
         if (autosaveTaskId != -1) {
-            Bukkit.getScheduler().cancelTask(autosaveTaskId);
+            SchedulerUtil.cancel(this, autosaveTaskId);
             autosaveTaskId = -1;
         }
     }
@@ -778,14 +866,28 @@ public class ExplosionProtector extends JavaPlugin
 
     private CoreProtectAPI fetchCoreProtectAPI() {
         Plugin plugin = Bukkit.getPluginManager().getPlugin("CoreProtect");
-        if (!(plugin instanceof CoreProtect cp)) {
+        if (plugin == null || !plugin.isEnabled()) {
             return null;
         }
-        CoreProtectAPI api = cp.getAPI();
-        if (api == null || api.APIVersion() < 7) {
+        try {
+            // Prefer typed access when the installed plugin matches our compile-time API.
+            if (plugin instanceof CoreProtect cp) {
+                CoreProtectAPI api = cp.getAPI();
+                if (api != null && api.APIVersion() >= 7) {
+                    return api;
+                }
+                return null;
+            }
+            // Fallback for forks / relocated loaders that still expose getAPI().
+            Object apiObj = plugin.getClass().getMethod("getAPI").invoke(plugin);
+            if (!(apiObj instanceof CoreProtectAPI api)) {
+                return null;
+            }
+            return api.APIVersion() >= 7 ? api : null;
+        } catch (ReflectiveOperationException | ClassCastException e) {
+            getLogger().warning("[ExplosionProtector] CoreProtect API probe failed: " + e.getMessage());
             return null;
         }
-        return api;
     }
 
     private boolean isWorldEnabled(String worldName) {
@@ -961,10 +1063,15 @@ public class ExplosionProtector extends JavaPlugin
     }
 
     @Override
-    public void setLanguage(String languageCode) {
-        getConfig().set("language", languageCode);
+    public boolean setLanguage(String languageCode) {
+        String normalized = settingsService.normalizeLanguageCode(languageCode);
+        if (normalized == null) {
+            return false;
+        }
+        getConfig().set("language", normalized);
         saveConfig();
-        settingsService.loadLanguageMessages(languageCode);
+        settingsService.loadLanguageMessages(normalized);
+        return true;
     }
 
     @Override
@@ -982,7 +1089,7 @@ public class ExplosionProtector extends JavaPlugin
 
     @Override
     public void saveNow() {
-        saveTrackedBlocksIfNeeded();
+        SchedulerUtil.runAsync(this, this::saveTrackedBlocksIfNeeded);
     }
 
     @Override

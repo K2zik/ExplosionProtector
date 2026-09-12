@@ -1,5 +1,7 @@
 package org.SlidrusForeal.explosionProtector.service;
 
+import org.bukkit.Material;
+
 import java.util.Set;
 
 public record PluginSettings(
@@ -36,8 +38,12 @@ public record PluginSettings(
         boolean cleanupUnloadedWorldsOnStart,
         Set<String> enabledWorlds,
         Set<String> disabledWorlds,
+        Set<Material> alwaysExplodeBlocks,
         boolean debugEnabled,
         long debugCacheLogCooldownMs,
         long outOfRangePackWarnCooldownMs
 ) {
+    public boolean isAlwaysExplode(Material material) {
+        return material != null && !alwaysExplodeBlocks.isEmpty() && alwaysExplodeBlocks.contains(material);
+    }
 }

@@ -76,6 +76,10 @@ public class TrackerService {
         return removeKeyInternal(new BlockKey(world, packed), true);
     }
 
+    /**
+     * Removes chunk entries from the in-memory tracker only.
+     * Does not imply persistence deletes — caller decides whether to mark dirty.
+     */
     public synchronized int removeChunk(String world, int chunkX, int chunkZ, Consumer<BlockKey> onRemoved) {
         Map<Long, Set<Long>> worldChunks = trackedChunksByWorld.get(world);
         if (worldChunks == null || worldChunks.isEmpty()) {
@@ -104,6 +108,22 @@ public class TrackerService {
             }
         }
         return removed;
+    }
+
+    public synchronized int loadChunk(String world, List<Long> packedBlocks) {
+        if (world == null || world.isBlank() || packedBlocks == null || packedBlocks.isEmpty()) {
+            return 0;
+        }
+        int loaded = 0;
+        for (Long packed : packedBlocks) {
+            if (packed == null) {
+                continue;
+            }
+            if (track(world, packed, null)) {
+                loaded++;
+            }
+        }
+        return loaded;
     }
 
     public synchronized int removeWorld(String world, Consumer<BlockKey> onRemoved) {

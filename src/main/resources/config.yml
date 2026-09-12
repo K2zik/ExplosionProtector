@@ -25,8 +25,10 @@ coreprotect-health-recovery-successes: 20
 # Legacy key (still supported for backward compatibility):
 # coreprotect-sync-lookup-timeout-ms: 2000
 
-# Behavior when CoreProtect lookup is unavailable/failed.
-protect-first-unknown: true
+# Behavior when CoreProtect has not answered yet for a block.
+# false = natural/unknown blocks can be destroyed (recommended).
+# true  = protect unknowns until CoreProtect confirms (safer for builds, but TNT won't break terrain).
+protect-first-unknown: false
 require-coreprotect: true
 
 # Local tracker for player-placed blocks.
@@ -34,7 +36,9 @@ enable-local-tracker: true
 persist-player-placed-blocks: true
 protect-player-placed-blocks: true
 max-tracked-blocks: 500000
-cleanup-on-chunk-unload: true
+# Evict unloaded chunks from RAM only. SQLite rows are kept and restored on chunk load.
+# Keep false on small servers; enable on large worlds to reduce memory.
+cleanup-on-chunk-unload: false
 cleanup-unloaded-worlds-on-start: true
 
 # Periodic persistence to avoid losing tracked data on crash.
@@ -47,6 +51,14 @@ protect-hanging-from-explosions: true
 protect-item-frames: true
 protect-paintings: true
 block-enderman-grief: true
+
+# Materials that ALWAYS explode, even if the block was placed by a player.
+# Use Bukkit Material names (case-insensitive), e.g. TNT, SAND, GRAVEL, REDSTONE_WIRE.
+always-explode-blocks:
+  - TNT
+  # - SAND
+  # - GRAVEL
+  # - REDSTONE_WIRE
 
 # World filters (case-insensitive). Keep both empty to apply everywhere.
 enabled-worlds: []
