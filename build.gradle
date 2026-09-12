@@ -1,14 +1,13 @@
 plugins {
     id 'java'
-    id("xyz.jpenilla.run-paper") version "2.3.1"
+    id 'xyz.jpenilla.run-paper' version '2.3.1'
 }
 
 group = 'org.SlidrusForeal'
-version = '2.2'
+version = '2.4'
 
 repositories {
     mavenCentral()
-
     maven {
         name = "papermc-repo"
         url = "https://repo.papermc.io/repository/maven-public/"
@@ -23,50 +22,136 @@ repositories {
     }
 }
 
+/**
+ * Single universal JAR (CoreProtect-style):
+ * - compile against the oldest supported API (1.19)
+ * - bytecode Java 17 so it runs on 1.19+ JVMs
+ * - plugin.yml api-version=1.19 so Paper/Folia 1.19..26.1 all accept the same download
+ * Newer Paper APIs (GlobalRegionScheduler, etc.) are resolved at runtime via reflection.
+ */
 dependencies {
-    // Metrics
-    compileOnly "org.bstats:bstats-bukkit:3.0.1"
-
-    // Folia API
-    compileOnly "dev.folia:folia-api:1.21.8-R0.1-SNAPSHOT"
-
-    // CoreProtect API
-    compileOnly "net.coreprotect:coreprotect:23.1"
+    // Oldest supported server API — keeps one binary compatible with 1.19..26.1
+    compileOnly "dev.folia:folia-api:1.19.4-R0.1-SNAPSHOT"
+    // Prefer local CoreProtect 24.0 jar shipped in /lib
+    compileOnly files("lib/CoreProtect-24.0.jar")
 }
-
-tasks {
-    runServer {
-        // Folia server version
-        minecraftVersion("1.21.8")
-    }
-}
-
-def targetJavaVersion = 21
 
 java {
-    def javaVersion = JavaVersion.toVersion(targetJavaVersion)
-    sourceCompatibility = javaVersion
-    targetCompatibility = javaVersion
-
-    if (JavaVersion.current() < javaVersion) {
-        toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
-tasks.withType(JavaCompile).configureEach {
+tasks.named('compileJava', JavaCompile).configure {
     options.encoding = 'UTF-8'
-
-    if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
-        options.release.set(targetJavaVersion)
-    }
+    // Target Java 17 for 1.19 server compatibility; newer JVMs run this fine.
+    options.release = 17
 }
 
-processResources {
-    def props = [version: version]
+tasks.named('processResources', Copy).configure {
+    def props = [
+            version       : version,
+            apiVersion    : '1.19',
+            foliaSupported: 'true'
+    ]
     inputs.properties props
     filteringCharset 'UTF-8'
-
     filesMatching('plugin.yml') {
         expand props
     }
+}
+
+tasks.named('jar', Jar).configure {
+    archiveBaseName.set('ExplosionProtector')
+    archiveVersion.set(project.version.toString())
+    // Friendly alias next to the versioned artifact.
+    doLast {
+        def out = archiveFile.get().asFile
+        def alias = new File(out.parentFile, 'ExplosionProtector.jar')
+        alias.bytes = out.bytes
+    }
+}
+
+tasks.register('printUniversalJar') {
+    group = 'help'
+    description = 'Print the universal JAR path'
+    doLast {
+        println "Universal JAR: ${tasks.jar.archiveFile.get().asFile}"
+        println "Alias: ${layout.buildDirectory.get().asFile}/libs/ExplosionProtector.jar"
+        println "Supports Minecraft/Paper/Folia: 1.19.x, 1.20.x, 1.21.x, 26.1.x"
+        println "CoreProtect: 24.0 API (runtime softdepend, older CP usually still works)"
+    }
+}
+
+// Folia test server (26.1.2 — latest supported line without 26.2)
+runPaper.folia.registerTask()
+
+tasks.named('runFolia').configure {
+    minecraftVersion('26.1.2')
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+    jvmArgs('-Dcom.mojang.eula.agree=true')
+}
+
+tasks.register('prepareFoliaRun') {
+    group = 'application'
+    description = 'Prepare Folia run directory (EULA, offline-mode, CoreProtect)'
+    doLast {
+        def runDir = file('run')
+        def pluginsDir = new File(runDir, 'plugins')
+        pluginsDir.mkdirs()
+
+        def eula = new File(runDir, 'eula.txt')
+        eula.text = 'eula=true\n'
+
+        def props = new File(runDir, 'server.properties')
+        if (!props.exists()) {
+            props.text = '''online-mode=false
+gamemode=creative
+difficulty=peaceful
+spawn-protection=0
+max-players=20
+motd=ExplosionProtector Folia Test
+server-port=25565
+level-name=world
+allow-flight=true
+'''.stripIndent()
+        } else {
+            def text = props.getText('UTF-8')
+            text = text.replaceAll(/(?m)^online-mode=.*/, 'online-mode=false')
+            if (!text.contains('online-mode=')) {
+                text += '\nonline-mode=false\n'
+            }
+            props.write(text, 'UTF-8')
+        }
+
+        def cpSrc = file('lib/CoreProtect-24.0.jar')
+        if (cpSrc.exists()) {
+            copy {
+                from cpSrc
+                into pluginsDir
+                rename { 'CoreProtect.jar' }
+            }
+        }
+
+        // Ensure plugin config uses protect-first-unknown=false for testing TNT terrain.
+        def epDir = new File(pluginsDir, 'ExplosionProtector')
+        epDir.mkdirs()
+        def cfg = new File(epDir, 'config.yml')
+        if (!cfg.exists()) {
+            copy {
+                from 'src/main/resources/config.yml'
+                into epDir
+            }
+        } else {
+            def text = cfg.getText('UTF-8')
+            text = text.replaceAll(/(?m)^protect-first-unknown:.*/, 'protect-first-unknown: false')
+            cfg.write(text, 'UTF-8')
+        }
+    }
+}
+
+tasks.named('runFolia').configure {
+    dependsOn 'prepareFoliaRun', 'jar'
 }

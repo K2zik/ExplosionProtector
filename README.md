@@ -1,117 +1,138 @@
-# 💣 ExplosionProtector for CoreProtect
+# ExplosionProtector for CoreProtect
 
-**Protect your players’ builds from unwanted explosions**  
-A lightweight Spigot/Paper plugin that uses CoreProtect to prevent explosions from destroying blocks placed by players.
+**Protect player builds from explosions — one JAR for Paper/Folia 1.19–26.1**
 
----
-
-## 🧠 Description
-
-`ExplosionProtector` hooks into all types of explosions (TNT, creeper, ender crystal, bed/respawn-anchor explosions, etc.) and checks each affected block’s origin via the CoreProtect API.  
-- **Player-placed blocks** are protected and remain intact.  
-- **All other blocks** (natural terrain, plugin-placed, etc.) are destroyed as normal.  
-- **TNT chain reactions** are still allowed: TNT will break TNT and natural blocks, but any player-placed block in the blast radius remains safe.
-
-This is ideal for:
-- PvE or Creative servers where you want to preserve player builds.  
-- Minigame or adventure maps that use TNT but need to protect certain structures.  
-- Any world where accidental or malicious explosions should not ruin player work.
+Lightweight plugin that keeps player-placed blocks safe from TNT, creepers, crystals, beds/anchors, etc., while natural terrain still breaks normally.
 
 ---
 
-## ⚙️ Installation
+## Description
 
-1. **Download** the latest `ExplosionProtector.jar`.  
-2. Place it into your server’s `plugins/` directory.  
-3. Ensure you have **CoreProtect v10+** installed and enabled.  
-4. **Start** or **reload** your server. You should see in console:
+ExplosionProtector checks each block in an explosion:
+
+- **Player-placed blocks** are protected (local tracker + CoreProtect).
+- **Natural / unknown blocks** are destroyed as usual (`protect-first-unknown: false` by default).
+- **Whitelist (`always-explode-blocks`)** — listed materials **always** explode, even if a player placed them (useful for TNT, sand, redstone, traps, etc.).
+- **TNT chains** can still break other TNT when `tnt-chain-breaks-only-tnt` is enabled.
+
+Ideal for PvE, creative, minigames, and maps where builds must survive accidental blasts.
+
+---
+
+## Installation
+
+1. Download `ExplosionProtector.jar` (universal build).
+2. Put it in `plugins/`.
+3. Install **CoreProtect 24.0+** (softdepend; required if `require-coreprotect: true`).
+4. Start the server. Console should show:
    ```
    [ExplosionProtector] Plugin enabled: protecting player-placed blocks from explosions.
    ```
 
+**Supported servers:** Paper / Folia / Spigot — Minecraft **1.19.x, 1.20.x, 1.21.x, 26.1.x**  
+**Java:** 17+ (use the JVM required by your server)
+
 ---
 
-## 🛠 Configuration
+## Configuration
 
-All settings are in `plugins/ExplosionProtector/`.
+File: `plugins/ExplosionProtector/config.yml`
 
-### 1. `config.yml`
+### Important options
+
 ```yaml
-# config.yml
-# Supported language codes: en, ru, es, zh, hi, ar, fr, de, ja, pt
-language: en
+language: en   # en, ru, es, zh, hi, ar, fr, de, ja, pt
+plugin-active: true
+
+# false = natural/unknown blocks break (recommended)
+# true  = protect unknowns until CoreProtect answers (safer builds, weaker TNT vs terrain)
+protect-first-unknown: false
+require-coreprotect: true
+
+protect-player-placed-blocks: true
+enable-local-tracker: true
+persist-player-placed-blocks: true
+
+tnt-chain-breaks-only-tnt: true
+protect-hanging-from-explosions: true
+protect-item-frames: true
+protect-paintings: true
+block-enderman-grief: true
+
+# Always destroy these materials in explosions, even if player-placed.
+always-explode-blocks:
+  - TNT
+  # - SAND
+  # - GRAVEL
+  # - REDSTONE_WIRE
+
+enabled-worlds: []
+disabled-worlds: []
+debug: false
 ```
 
-### 2. Message files
-On first run the plugin extracts:
-- `messages.yml` (default English)
-- `messages_ru.yml`
-- `messages_es.yml`
-- `messages_zh.yml`
-- `messages_hi.yml`
-- `messages_ar.yml`
-- `messages_fr.yml`
-- `messages_de.yml`
-- `messages_ja.yml`
-- `messages_pt.yml`
+After editing config, run `/ep reload`.
 
-Each contains all user-facing strings. To add or adjust translations, edit the corresponding file in the plugin’s folder.
+### Message files
+
+On first run the plugin extracts `messages.yml` and `messages_<lang>.yml` for:  
+`en`, `ru`, `es`, `zh`, `hi`, `ar`, `fr`, `de`, `ja`, `pt`.
 
 ---
 
-## 💻 Commands
+## Commands
 
-All commands require the `explosionprotector.info` permission (default OP-only).
+| Command | Permission | Description |
+|---------|------------|-------------|
+| `/ep status` / `/ep info` | `explosionprotector.info` | Status, tracker size, CoreProtect queue health |
+| `/ep language <code>` | `explosionprotector.info` | Switch language |
+| `/ep reload` | `explosionprotector.reload` | Reload config |
+| `/ep toggle` | `explosionprotector.toggle` | Enable/disable protection at runtime |
+| `/ep save` | `explosionprotector.reload` | Force-save tracked blocks |
+| `/ep cacheclear` | `explosionprotector.reload` | Clear placement cache |
 
-| Command                       | Description                                       |
-|-------------------------------|---------------------------------------------------|
-| `/ep status` or `/ep info`    | Show plugin status and number of blocks protected in the last explosion. |
-| `/ep language <code>`         | (Admin) Change plugin language at runtime. Valid codes: `en`, `ru`, `es`, `zh`, `hi`, `ar`, `fr`, `de`, `ja`, `pt`. |
-
-### Examples
-```shell
-/ep status
-# Status: enabled
-# Blocks protected in last operation: 17
-
-/ep language ru
-# Language set to 'ru'.
-```
+Aliases: `/explosionprot`
 
 ---
 
-## 🔄 Change Log
+## How protection works
+
+```text
+Explosion
+  → always-explode-blocks?  → destroy
+  → local tracker hit?      → protect
+  → placement cache hit?    → protect/deny
+  → else                    → protect-first-unknown + async CoreProtect learn
+```
+
+Player placements are recorded on `BlockPlaceEvent`. CoreProtect is used as async fallback for older builds.
+
+---
+
+## Change Log
+
+### [3.0]
+- Universal single JAR for 1.19–26.1 (Folia-supported)
+- CoreProtect 24.0 API
+- `protect-first-unknown` default `false` (terrain explodes correctly)
+- **`always-explode-blocks` whitelist** — materials that always break in explosions
+- Async CoreProtect queue, SQLite tracker, Folia-safe schedulers
 
 ### [1.1] – 2025-04-27
-- **CoreProtect Lookup Cache**  
-  Added Guava-backed cache to reduce repeated CoreProtect queries and improve performance during big explosions.
-- **Multi-Language Support**  
-  • Extracts all `messages_<lang>.yml` on first run.  
-  • `config.yml` option `language: <code>`.  
-  • `/ep language <code>` for on-the-fly language switching.
-- **TNT Chain Reaction Handling**  
-  Refactored logic so TNT chain reactions still destroy TNT and natural blocks but protect player-placed blocks.
-- **Unified Explosion Handlers**  
-  Consolidated `EntityExplodeEvent` and `BlockExplodeEvent` logic for consistent protection.
-- **Automatic Resource Extraction**  
-  Ensures no “file not found” warnings when all translation files are present in the JAR.
-- **Configurable Messages & Clean Code**  
-  All user text moved to message files; comments and code streamlined and fully English-documented.
+- CoreProtect lookup cache, multi-language, TNT chain handling, unified explode handlers
 
 ### [1.0] – Initial Release
-- Basic protection of player-placed blocks against all explosion types using CoreProtect API.
-- Support for TNT, creeper, ender crystal, block explosions.
-- `/ep status` command showing protection status.
+- Basic protection via CoreProtect API
 
 ---
 
-## 🧱 Dependencies
+## Dependencies
 
-- **Spigot / Paper** 1.13+  
-- **CoreProtect** v10 or higher
+- Paper / Folia / Spigot **1.19+** (up to **26.1.x**)
+- **CoreProtect** 24.0 recommended (older versions often work via softdepend)
 
 ---
 
-## 📄 License
+## License
 
-MIT License. See `LICENSE` in the GitHub repository for details.
+MIT License. See `LICENSE` in the repository.
