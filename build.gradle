@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'org.SlidrusForeal'
-version = '2.4'
+version = '3.1'
 
 repositories {
     mavenCentral()
@@ -26,14 +26,29 @@ repositories {
  * Single universal JAR (CoreProtect-style):
  * - compile against the oldest supported API (1.19)
  * - bytecode Java 17 so it runs on 1.19+ JVMs
- * - plugin.yml api-version=1.19 so Paper/Folia 1.19..26.1 all accept the same download
+ * - plugin.yml api-version=1.19 so Paper/Folia/Purpur/Spigot 1.19..26.2 all accept the same download
  * Newer Paper APIs (GlobalRegionScheduler, etc.) are resolved at runtime via reflection.
+ *
+ * Platforms: Paper, Folia, Purpur (Paper fork), Spigot
+ * Minecraft: 1.19.x, 1.20.x, 1.21.x, 26.1.x, 26.2
  */
 dependencies {
-    // Oldest supported server API — keeps one binary compatible with 1.19..26.1
+    // Oldest supported server API — keeps one binary compatible with 1.19..26.2
     compileOnly "dev.folia:folia-api:1.19.4-R0.1-SNAPSHOT"
     // Prefer local CoreProtect 24.0 jar shipped in /lib
     compileOnly files("lib/CoreProtect-24.0.jar")
+}
+
+// Optional compile check against current 26.2 Paper API (does not change the shipped JAR).
+configurations {
+    compileCheck26_2
+}
+dependencies {
+    compileCheck26_2("io.papermc.paper:paper-api:26.2.build.123-stable") {
+        exclude group: 'org.apache.logging.log4j'
+        exclude group: 'org.slf4j'
+    }
+    compileCheck26_2 files("lib/CoreProtect-24.0.jar")
 }
 
 java {
@@ -78,16 +93,30 @@ tasks.register('printUniversalJar') {
     doLast {
         println "Universal JAR: ${tasks.jar.archiveFile.get().asFile}"
         println "Alias: ${layout.buildDirectory.get().asFile}/libs/ExplosionProtector.jar"
-        println "Supports Minecraft/Paper/Folia: 1.19.x, 1.20.x, 1.21.x, 26.1.x"
+        println "Platforms: Paper, Folia, Purpur, Spigot"
+        println "Minecraft: 1.19.x, 1.20.x, 1.21.x, 26.1.x, 26.2"
         println "CoreProtect: 24.0 API (runtime softdepend, older CP usually still works)"
     }
 }
 
-// Folia test server (26.1.2 — latest supported line without 26.2)
+tasks.register('compileCheckJava26_2', JavaCompile) {
+    group = 'verification'
+    description = 'Compile sources against Paper API 26.2 to verify compatibility'
+    source = sourceSets.main.java
+    classpath = configurations.compileCheck26_2
+    destinationDirectory = layout.buildDirectory.dir('classes/java/check26_2')
+    options.encoding = 'UTF-8'
+    options.release = 21
+    javaCompiler = javaToolchains.compilerFor {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+// Folia test server on 26.2 (requires run-paper that understands fill.papermc.io; may need Gradle 8.14+)
 runPaper.folia.registerTask()
 
 tasks.named('runFolia').configure {
-    minecraftVersion('26.1.2')
+    minecraftVersion('26.2')
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(25)
     }

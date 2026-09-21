@@ -1,6 +1,6 @@
 # ExplosionProtector for CoreProtect
 
-**Protect player builds from explosions — one JAR for Paper/Folia 1.19–26.1**
+**Protect player builds from explosions — one JAR for Paper/Folia/Purpur/Spigot 1.19–26.2**
 
 Lightweight plugin that keeps player-placed blocks safe from TNT, creepers, crystals, beds/anchors, etc., while natural terrain still breaks normally.
 
@@ -29,8 +29,8 @@ Ideal for PvE, creative, minigames, and maps where builds must survive accidenta
    [ExplosionProtector] Plugin enabled: protecting player-placed blocks from explosions.
    ```
 
-**Supported servers:** Paper / Folia / Spigot — Minecraft **1.19.x, 1.20.x, 1.21.x, 26.1.x**  
-**Java:** 17+ (use the JVM required by your server)
+**Supported servers:** Paper / Folia / Purpur / Spigot — Minecraft **1.19.x, 1.20.x, 1.21.x, 26.1.x, 26.2**  
+**Java:** 17+ (use the JVM required by your server; 26.x usually needs Java 21/25)
 
 ---
 
@@ -111,6 +111,10 @@ Player placements are recorded on `BlockPlaceEvent`. CoreProtect is used as asyn
 
 ## Change Log
 
+### [3.1]
+- Confirm support for Minecraft **26.2** on Paper / Folia / Purpur / Spigot
+- Keep one universal JAR (`api-version: 1.19`) for 1.19–26.2
+
 ### [3.0]
 - Universal single JAR for 1.19–26.1 (Folia-supported)
 - CoreProtect 24.0 API
@@ -128,7 +132,7 @@ Player placements are recorded on `BlockPlaceEvent`. CoreProtect is used as asyn
 
 ## Dependencies
 
-- Paper / Folia / Spigot **1.19+** (up to **26.1.x**)
+- Paper / Folia / Purpur / Spigot **1.19+** (up to **26.2**)
 - **CoreProtect** 24.0 recommended (older versions often work via softdepend)
 
 ---

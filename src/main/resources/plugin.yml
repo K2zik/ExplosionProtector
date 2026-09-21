@@ -1,7 +1,7 @@
 name: ExplosionProtector
 version: '${version}'
 main: org.SlidrusForeal.explosionProtector.ExplosionProtector
-# Lowest supported line — newer Paper/Folia (1.20–26.x) still load this single JAR.
+# Lowest supported line — newer Paper/Folia/Purpur/Spigot (1.20–26.2) still load this single JAR.
 api-version: '${apiVersion}'
 softdepend:
   - CoreProtect
